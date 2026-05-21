@@ -78,7 +78,8 @@ const App = () => {
                     </div>
                 ) : (
                     <div style={styles.userInfo}>
-                        <span style={{ marginRight: '20px' }}>Stan konta: <strong>{balance.toFixed(2)} PLN</strong></span>
+                        <span style={{ marginRight: '20px' }}>Stan konta: <strong>{balance?.toFixed(2) ?? "0.00"} PLN</strong>
+</span>
                         <button onClick={handleLogout} style={styles.logoutBtn}>Wyloguj</button>
                     </div>
                 )}
