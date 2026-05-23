@@ -1,17 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
+
 const App = () => {
+
+    const [token, setToken] = useState(localStorage.getItem("token") || null);
+
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [balance, setBalance] = useState(0);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [currencies, setCurrencies] = useState([]);
+    const [stocks, setStocks] = useState([]);
+    const [stocksLoading, setStocksLoading] = useState(true);
+    const [portfolio, setPortfolio] = useState({
+        balance: 0,
+        currencies: [],
+        stocks: []
+    });
+
+
+
 
     const handleLogin = async (e) => {
         e.preventDefault();
         try {
             const { data } = await axios.post('/api/users/login', { email, password });
             localStorage.setItem('userInfo', JSON.stringify(data));
+            setToken(data.token);
             setIsLoggedIn(true);
             setBalance(data.balance);
             alert('Zalogowano pomyślnie!');
@@ -51,6 +67,75 @@ const App = () => {
         setIsLoggedIn(false);
         setBalance(0);
     };
+
+    useEffect(() => {
+        if (!isLoggedIn) return;
+
+        fetch("http://localhost:5000/api/market/rates")
+            .then(res => res.json())
+            .then(data => setCurrencies(data))
+            .catch(err => console.error("Błąd pobierania walut:", err));
+    }, [isLoggedIn]);
+
+    useEffect(() => {
+        if (!isLoggedIn) return;
+
+        setStocksLoading(true);
+
+        fetch("http://localhost:5000/api/market/stocks")
+            .then(res => res.json())
+            .then(data => {
+                setStocks(data);
+                setStocksLoading(false);
+            })
+            .catch(err => {
+                console.error("Błąd pobierania akcji:", err);
+                setStocksLoading(false);
+            });
+    }, [isLoggedIn]);
+
+    const fetchPortfolio = () => {
+        fetch("http://localhost:5000/api/market/portfolio", {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        })
+            .then(res => res.json())
+            .then(data => {
+                setPortfolio({
+                    balance: data.balance,
+                    currencies: Array.isArray(data.currencies) ? data.currencies : [],
+                    stocks: Array.isArray(data.stocks) ? data.stocks : []
+                });
+            })
+
+            .catch(err => console.error("Błąd pobierania portfolio:", err));
+    };
+
+    useEffect(() => {
+        if (isLoggedIn) {
+            fetchPortfolio();
+        }
+    }, [isLoggedIn]);
+
+    const handleBuyStock = (symbol) => {
+        fetch("http://localhost:5000/api/market/buy-stock", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ symbol })
+        })
+            .then(res => res.json())
+            .then(data => {
+                console.log("Kupiono akcję:", data);
+                fetchPortfolio(); // odświeżamy portfolio
+            })
+            .catch(err => console.error("Błąd kupowania akcji:", err));
+    };
+
+
 
     return (
         <div style={styles.container}>
@@ -100,16 +185,18 @@ const App = () => {
                         </tr>
                         </thead>
                         <tbody>
-                        <tr>
-                            <td style={styles.td}>Dolar (USD/PLN)</td>
-                            <td style={styles.td}>4.02</td>
-                            <td style={styles.td}><button style={styles.buyBtn}>KUP</button></td>
-                        </tr>
-                        <tr>
-                            <td style={styles.td}>Euro (EUR/PLN)</td>
-                            <td style={styles.td}>4.35</td>
-                            <td style={styles.td}><button style={styles.buyBtn}>KUP</button></td>
-                        </tr>
+                        {currencies.map(c => (
+                            <tr key={c.code}>
+                                <td style={styles.td}>{c.code}</td>
+                                <td style={styles.td}>{c.ask?.toFixed(4)}</td>
+                                <td style={styles.td}>
+                                    <button style={styles.buyBtn} onClick={() => handleBuyStock(s.symbol)}>
+                                        KUP
+                                    </button>
+
+                                </td>
+                            </tr>
+                        ))}
                         </tbody>
                     </table>
                 </section>
@@ -126,16 +213,28 @@ const App = () => {
                         </tr>
                         </thead>
                         <tbody>
-                        <tr>
-                            <td style={styles.td}>Apple (AAPL)</td>
-                            <td style={styles.td}>175.00</td>
-                            <td style={styles.td}><button style={styles.buyBtn}>KUP</button></td>
-                        </tr>
-                        <tr>
-                            <td style={styles.td}>Microsoft (MSFT)</td>
-                            <td style={styles.td}>420.00</td>
-                            <td style={styles.td}><button style={styles.buyBtn}>KUP</button></td>
-                        </tr>
+                        {stocksLoading ? (
+                            <tr>
+                                <td colSpan="3" style={{ textAlign: "center", padding: "20px" }}>
+                                    <div className="spinner"></div>
+                                </td>
+                            </tr>
+                        ) : (
+                            stocks.map(s => (
+                                <tr key={s.symbol}>
+                                    <td style={styles.td}>{s.symbol}</td>
+                                    <td style={styles.td}>{s.price?.toFixed(2)}</td>
+                                    <td style={styles.td}>
+                                        <button style={styles.buyBtn} onClick={() => handleBuyStock(s.symbol)}>
+                                            KUP
+                                        </button>
+
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+
+
                         </tbody>
                     </table>
                 </section>
@@ -154,12 +253,14 @@ const App = () => {
                             </tr>
                             </thead>
                             <tbody>
-                            <tr>
-                                <td style={styles.td}>Dolar</td>
-                                <td style={styles.td}>100</td>
-                                <td style={styles.td}>402.00</td>
-                                <td style={styles.td}><button style={styles.sellBtn}>SPRZEDAJ</button></td>
-                            </tr>
+                            {portfolio.currencies.map(cur => (
+                                <tr key={cur.code}>
+                                    <td style={styles.td}>{cur.code}</td>
+                                    <td style={styles.td}>{cur.amount}</td>
+                                    <td style={styles.td}>{cur.avgPrice?.toFixed(4)}</td>
+                                </tr>
+                            ))}
+
                             </tbody>
                         </table>
                     </section>
@@ -174,19 +275,20 @@ const App = () => {
                         <table style={styles.table}>
                             <thead>
                             <tr>
-                                <th style={styles.th}>SPOŁKA</th>
-                                <th style={styles.th}>ILOŚĆ</th>
-                                <th style={styles.th}>WARTOŚĆ</th>
-                                <th style={styles.th}>AKCJA</th>
+                                <th style={styles.th}>Symbol</th>
+                                <th style={styles.th}>Ilość</th>
+                                <th style={styles.th}>Średnia cena zakupu</th>
+                                <th style={styles.th}>Zysk</th>
                             </tr>
                             </thead>
                             <tbody>
-                            <tr>
-                                <td style={styles.td}>Apple</td>
-                                <td style={styles.td}>5</td>
-                                <td style={styles.td}>875.00</td>
-                                <td style={styles.td}><button style={styles.sellBtn}>SPRZEDAJ</button></td>
-                            </tr>
+                            {portfolio.stocks.map(stock => (
+                                <tr key={stock.symbol}>
+                                    <td style={styles.td}>{stock.symbol}</td>
+                                    <td style={styles.td}>{stock.amount}</td>
+                                    <td style={styles.td}>{stock.avgPrice?.toFixed(2)}</td>
+                                </tr>
+                            ))}
                             </tbody>
                         </table>
                     </section>
@@ -273,11 +375,21 @@ const styles = {
         color: '#8b949e',
         fontStyle: 'italic'
     },
+    spinner: {
+        width: '28px',
+        height: '28px',
+        border: '4px solid #30363d',
+        borderTopColor: '#1f6feb',
+        borderRadius: '50%',
+        animation: 'spin 0.8s linear infinite',
+        margin: '0 auto'
+    },
     table: { width: '100%', borderCollapse: 'collapse', marginTop: '10px' },
     th: { textAlign: 'left', color: '#8b949e', fontSize: '12px', borderBottom: '1px solid #30363d', paddingBottom: '10px' },
     td: { padding: '12px 0', borderBottom: '1px solid #21262d', fontSize: '14px' },
     buyBtn: { backgroundColor: '#1f6feb', color: 'white', border: 'none', padding: '5px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' },
-    sellBtn: { backgroundColor: '#da3633', color: 'white', border: 'none', padding: '5px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }
+    sellBtn: { backgroundColor: '#da3633', color: 'white', border: 'none', padding: '5px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' },
+
 };
 
 export default App;
