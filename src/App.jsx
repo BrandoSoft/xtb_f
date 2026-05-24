@@ -1,6 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
+import Navbar from "./components/Navbar.jsx";
+import MarketCurrencies from "./components/MarketCurrencies.jsx";
+import MarketStocks from "./components/MarketStocks.jsx";
+import PortfolioCurrencies from "./components/PortfolioCurrencies.jsx";
+import PortfolioStocks from "./components/PortfolioStocks.jsx";
+
+
+
+import { styles } from "./styles.js";
+
+
 
 const App = () => {
 
@@ -13,29 +24,57 @@ const App = () => {
     const [currencies, setCurrencies] = useState([]);
     const [stocks, setStocks] = useState([]);
     const [stocksLoading, setStocksLoading] = useState(true);
+
     const [portfolio, setPortfolio] = useState({
         balance: 0,
         currencies: [],
         stocks: []
     });
 
+    //  Pobieranie profilu po starcie aplikacji
+    useEffect(() => {
+        if (token) {
+            fetchProfile();
+            setIsLoggedIn(true);
+        }
+    }, [token]);
 
+    //  Pobieranie profilu z backendu
+    const fetchProfile = async () => {
+        try {
+            const { data } = await axios.get('/api/users/profile', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
 
+            setBalance(data.balance);
+            setPortfolio(data.portfolio);
+        } catch (err) {
+            console.error("Błąd pobierania profilu:", err);
+        }
+    };
 
+    //  Logowanie
     const handleLogin = async (e) => {
         e.preventDefault();
         try {
             const { data } = await axios.post('/api/users/login', { email, password });
-            localStorage.setItem('userInfo', JSON.stringify(data));
+
+            // zapisujemy token
+            localStorage.setItem('token', data.token);
             setToken(data.token);
+
             setIsLoggedIn(true);
-            setBalance(data.balance);
+
+            // pobieramy aktualny profil
+            await fetchProfile();
+
             alert('Zalogowano pomyślnie!');
         } catch (error) {
             alert(error.response?.data?.message || 'Błąd logowania');
         }
     };
 
+    //  Rejestracja
     const handleRegister = async (e) => {
         e.preventDefault();
         try {
@@ -44,30 +83,31 @@ const App = () => {
                 email,
                 password
             });
-            localStorage.setItem('userInfo', JSON.stringify(data));
+
+            // zapisujemy token
+            localStorage.setItem('token', data.token);
+            setToken(data.token);
+
             setIsLoggedIn(true);
-            setBalance(data.balance);
+
+            // pobieramy aktualny profil
+            await fetchProfile();
+
             alert('Konto stworzone i zalogowano!');
         } catch (error) {
             alert(error.response?.data?.message || 'Błąd rejestracji');
         }
     };
 
-    useEffect(() => {
-        const userInfo = localStorage.getItem('userInfo');
-        if (userInfo) {
-            const user = JSON.parse(userInfo);
-            setIsLoggedIn(true);
-            setBalance(user.balance);
-        }
-    }, []);
-
+    //  Wylogowanie
     const handleLogout = () => {
-        localStorage.removeItem('userInfo');
+        localStorage.removeItem('token');
         setIsLoggedIn(false);
         setBalance(0);
+        setPortfolio({ balance: 0, currencies: [], stocks: [] });
     };
 
+    //  Pobieranie walut
     useEffect(() => {
         if (!isLoggedIn) return;
 
@@ -77,6 +117,7 @@ const App = () => {
             .catch(err => console.error("Błąd pobierania walut:", err));
     }, [isLoggedIn]);
 
+    //  Pobieranie akcji
     useEffect(() => {
         if (!isLoggedIn) return;
 
@@ -94,6 +135,7 @@ const App = () => {
             });
     }, [isLoggedIn]);
 
+    //  Pobieranie portfolio
     const fetchPortfolio = () => {
         fetch("http://localhost:5000/api/market/portfolio", {
             headers: {
@@ -108,7 +150,6 @@ const App = () => {
                     stocks: Array.isArray(data.stocks) ? data.stocks : []
                 });
             })
-
             .catch(err => console.error("Błąd pobierania portfolio:", err));
     };
 
@@ -117,6 +158,8 @@ const App = () => {
             fetchPortfolio();
         }
     }, [isLoggedIn]);
+
+    //  Kupowanie akcji
 
     const handleBuyStock = (symbol) => {
         fetch("http://localhost:5000/api/market/buy-stock", {
@@ -130,168 +173,127 @@ const App = () => {
             .then(res => res.json())
             .then(data => {
                 console.log("Kupiono akcję:", data);
+                setBalance(data.balance);
                 fetchPortfolio(); // odświeżamy portfolio
             })
             .catch(err => console.error("Błąd kupowania akcji:", err));
     };
 
+    //  sprzedawanie akcji
+
+    const handleSellStock = (symbol) => {
+        fetch("http://localhost:5000/api/market/sell-stock", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ symbol })
+        })
+            .then(res => res.json())
+            .then(data => {
+                console.log("Sprzedano akcję:", data);
+                setBalance(data.balance);
+                fetchPortfolio(); // odświeżamy portfolio
+            })
+            .catch(err => console.error("Błąd sprzedawania akcji:", err));
+    };
+
+
+    //  Kupowanie walut
+
+    const handleBuyCurrency = (code) => {
+        fetch("http://localhost:5000/api/market/buy-currency", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ code})
+        })
+            .then(res => res.json())
+            .then(data => {
+                console.log("Kupiono walutę:", data);
+                setBalance(data.balance);
+                fetchPortfolio(); // odświeżamy portfolio
+            })
+            .catch(err => console.error("Błąd kupowania waluty:", err));
+    };
+
+    //  Sprzedawanie walut
+
+    const handleSellCurrency = (code, amount) => {
+        fetch("http://localhost:5000/api/market/sell-currency", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ code, amount })
+        })
+            .then(res => res.json())
+            .then(data => {
+                console.log("Sprzedano walutę:", data);
+                setBalance(data.balance);
+                fetchPortfolio();
+            })
+            .catch(err => console.error("Błąd sprzedawania waluty:", err));
+    };
+
+
 
 
     return (
         <div style={styles.container}>
-            {/* 1. GÓRNY PASEK (NAVBAR) */}
-            <header style={styles.navbar}>
-                <div style={styles.logo}>XTB CLONE</div>
-                {!isLoggedIn ? (
-                    <div style={styles.loginForm}>
-                        <input
-                            type="email"
-                            placeholder="login/mail"
-                            style={styles.input}
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                        />
-                        <input
-                            type="password"
-                            placeholder="hasło"
-                            style={styles.input}
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                        />
-                        <button onClick={handleLogin} style={styles.loginBtn}>Zaloguj</button>
-                        <button onClick={handleRegister} style={styles.registerBtn}>Zarejestruj</button>
-                    </div>
-                ) : (
-                    <div style={styles.userInfo}>
-                        <span style={{ marginRight: '20px' }}>Stan konta: <strong>{balance?.toFixed(2) ?? "0.00"} PLN</strong>
-</span>
-                        <button onClick={handleLogout} style={styles.logoutBtn}>Wyloguj</button>
-                    </div>
-                )}
-            </header>
 
+            <Navbar
+                isLoggedIn={isLoggedIn}
+                balance={balance}
+                email={email}
+                password={password}
+                setEmail={setEmail}
+                setPassword={setPassword}
+                handleLogin={handleLogin}
+                handleRegister={handleRegister}
+                handleLogout={handleLogout}
+            />
             {/* 2. SEKCJA GŁÓWNA (GRID) */}
             <main style={styles.grid}>
 
                 {/* BLOK: WALUTY */}
-                <section style={styles.card}>
-                    <h3 style={styles.cardTitle}>RYNEK WALUT (FOREX)</h3>
-                    <table style={styles.table}>
-                        <thead>
-                        <tr>
-                            <th style={styles.th}>WALUTA</th>
-                            <th style={styles.th}>KURS</th>
-                            <th style={styles.th}>AKCJA</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {currencies.map(c => (
-                            <tr key={c.code}>
-                                <td style={styles.td}>{c.code}</td>
-                                <td style={styles.td}>{c.ask?.toFixed(4)}</td>
-                                <td style={styles.td}>
-                                    <button style={styles.buyBtn} onClick={() => handleBuyStock(s.symbol)}>
-                                        KUP
-                                    </button>
+                <MarketCurrencies
+                    currencies={currencies}
+                    handleBuyCurrency={handleBuyCurrency}
+                />
 
-                                </td>
-                            </tr>
-                        ))}
-                        </tbody>
-                    </table>
-                </section>
 
                 {/* BLOK: AKCJE */}
-                <section style={styles.card}>
-                    <h3 style={styles.cardTitle}>GIEŁDA PAPIERÓW</h3>
-                    <table style={styles.table}>
-                        <thead>
-                        <tr>
-                            <th style={styles.th}>SPOŁKA</th>
-                            <th style={styles.th}>CENA</th>
-                            <th style={styles.th}>AKCJA</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {stocksLoading ? (
-                            <tr>
-                                <td colSpan="3" style={{ textAlign: "center", padding: "20px" }}>
-                                    <div className="spinner"></div>
-                                </td>
-                            </tr>
-                        ) : (
-                            stocks.map(s => (
-                                <tr key={s.symbol}>
-                                    <td style={styles.td}>{s.symbol}</td>
-                                    <td style={styles.td}>{s.price?.toFixed(2)}</td>
-                                    <td style={styles.td}>
-                                        <button style={styles.buyBtn} onClick={() => handleBuyStock(s.symbol)}>
-                                            KUP
-                                        </button>
 
-                                    </td>
-                                </tr>
-                            ))
-                        )}
+                <MarketStocks
+                    stocks={stocks}
+                    stocksLoading={stocksLoading}
+                    handleBuyStock={handleBuyStock}
+                />
 
-
-                        </tbody>
-                    </table>
-                </section>
 
                 {/* BLOK: MOJE WALUTY */}
                 {isLoggedIn ? (
-                    <section style={styles.card}>
-                        <h3 style={styles.cardTitle}>MOJE WALUTY</h3>
-                        <table style={styles.table}>
-                            <thead>
-                            <tr>
-                                <th style={styles.th}>WALUTA</th>
-                                <th style={styles.th}>ILOŚĆ</th>
-                                <th style={styles.th}>WARTOŚĆ</th>
-                                <th style={styles.th}>AKCJA</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {portfolio.currencies.map(cur => (
-                                <tr key={cur.code}>
-                                    <td style={styles.td}>{cur.code}</td>
-                                    <td style={styles.td}>{cur.amount}</td>
-                                    <td style={styles.td}>{cur.avgPrice?.toFixed(4)}</td>
-                                </tr>
-                            ))}
-
-                            </tbody>
-                        </table>
-                    </section>
+                    <PortfolioCurrencies
+                        currencies={portfolio.currencies}
+                        handleBuyCurrency={handleBuyCurrency}
+                        handleSellCurrency={handleSellCurrency}
+                    />
                 ) : (
                     <section style={styles.lockedCard}>Zaloguj się, aby zarządzać walutami</section>
                 )}
 
+
                 {/* BLOK: MOJE AKCJE */}
                 {isLoggedIn ? (
-                    <section style={styles.card}>
-                        <h3 style={styles.cardTitle}>MOJE AKCJE</h3>
-                        <table style={styles.table}>
-                            <thead>
-                            <tr>
-                                <th style={styles.th}>Symbol</th>
-                                <th style={styles.th}>Ilość</th>
-                                <th style={styles.th}>Średnia cena zakupu</th>
-                                <th style={styles.th}>Zysk</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {portfolio.stocks.map(stock => (
-                                <tr key={stock.symbol}>
-                                    <td style={styles.td}>{stock.symbol}</td>
-                                    <td style={styles.td}>{stock.amount}</td>
-                                    <td style={styles.td}>{stock.avgPrice?.toFixed(2)}</td>
-                                </tr>
-                            ))}
-                            </tbody>
-                        </table>
-                    </section>
+                    <PortfolioStocks
+                        stocks={portfolio.stocks}
+                        handleSellStock={handleSellStock}
+                    />
                 ) : (
                     <section style={styles.lockedCard}>Zaloguj się, aby zarządzać akcjami</section>
                 )}
@@ -299,97 +301,4 @@ const App = () => {
         </div>
     );
 };
-
-const styles = {
-    container: {
-        fontFamily: "'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-        padding: '20px',
-        backgroundColor: '#0d1117',
-        color: '#c9d1d9',
-        minHeight: '100vh'
-    },
-    navbar: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '15px 30px',
-        backgroundColor: '#161b22',
-        borderBottom: '1px solid #30363d',
-        borderRadius: '8px',
-        marginBottom: '30px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
-    },
-    logo: { fontSize: '24px', fontWeight: 'bold', color: '#58a6ff', letterSpacing: '2px' },
-    loginForm: { display: 'flex', gap: '12px' },
-    input: {
-        padding: '8px 12px',
-        backgroundColor: '#0d1117',
-        border: '1px solid #30363d',
-        borderRadius: '6px',
-        color: 'white',
-        outline: 'none'
-    },
-    loginBtn: {
-        padding: '8px 20px',
-        cursor: 'pointer',
-        backgroundColor: '#238636',
-        color: 'white',
-        border: 'none',
-        borderRadius: '6px',
-        fontWeight: 'bold'
-    },
-    registerBtn: {
-        padding: '8px 20px',
-        cursor: 'pointer',
-        backgroundColor: 'transparent',
-        color: '#c9d1d9',
-        border: '1px solid #30363d',
-        borderRadius: '6px'
-    },
-    logoutBtn: { padding: '5px 12px', backgroundColor: '#da3633', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' },
-    grid: {
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '25px',
-        maxWidth: '1200px',
-        margin: '0 auto'
-    },
-    card: {
-        backgroundColor: '#161b22',
-        border: '1px solid #30363d',
-        borderRadius: '10px',
-        padding: '20px',
-        minHeight: '250px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
-    },
-    cardTitle: { color: '#58a6ff', margin: '0 0 15px 0', fontSize: '18px' },
-    lockedCard: {
-        backgroundColor: 'rgba(22, 27, 34, 0.6)',
-        border: '1px dashed #484f58',
-        borderRadius: '10px',
-        padding: '20px',
-        minHeight: '250px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#8b949e',
-        fontStyle: 'italic'
-    },
-    spinner: {
-        width: '28px',
-        height: '28px',
-        border: '4px solid #30363d',
-        borderTopColor: '#1f6feb',
-        borderRadius: '50%',
-        animation: 'spin 0.8s linear infinite',
-        margin: '0 auto'
-    },
-    table: { width: '100%', borderCollapse: 'collapse', marginTop: '10px' },
-    th: { textAlign: 'left', color: '#8b949e', fontSize: '12px', borderBottom: '1px solid #30363d', paddingBottom: '10px' },
-    td: { padding: '12px 0', borderBottom: '1px solid #21262d', fontSize: '14px' },
-    buyBtn: { backgroundColor: '#1f6feb', color: 'white', border: 'none', padding: '5px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' },
-    sellBtn: { backgroundColor: '#da3633', color: 'white', border: 'none', padding: '5px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' },
-
-};
-
 export default App;
